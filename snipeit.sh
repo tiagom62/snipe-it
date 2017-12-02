@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#1
 
 ######################################################
 #           Snipe-It Install Script                  #
@@ -23,13 +24,10 @@ if [ "$(id -u)" != "0" ]; then
     fi
 fi
 
-#First things first, let's set some variables and find our distro.
 clear
 
 name="snipeit"
 verbose="false"
-hostname="$(hostname)"
-fqdn="$(hostname --fqdn)"
 hosts=/etc/hosts
 
 spin[0]="-"
@@ -101,13 +99,13 @@ installsnipeit () {
     echo "* Configuring .env file."
     cp "$webdir/$name/.env.example" "$webdir/$name/.env"
 
-    sed -i '1 i\#Created By Snipe-it Installer' "$webdir/$name/.env"
-    sed -i 's,^\(APP_TIMEZONE=\).*,\1'$tzone',' "$webdir/$name/.env"
-    sed -i 's,^\(DB_HOST=\).*,\1'localhost',' "$webdir/$name/.env"
-    sed -i 's,^\(DB_DATABASE=\).*,\1'snipeit',' "$webdir/$name/.env"
-    sed -i 's,^\(DB_USERNAME=\).*,\1'snipeit',' "$webdir/$name/.env"
-    sed -i 's,^\(DB_PASSWORD=\).*,\1'$mysqluserpw',' "$webdir/$name/.env"
-    sed -i 's,^\(APP_URL=\).*,\1'http://$fqdn',' "$webdir/$name/.env"
+    #sed -i .bak '1 i\#Created By Snipe-it Installer' "$webdir/$name/.env"
+    sed -i .bak 's,^\(APP_TIMEZONE=\).*,\1'$tzone',' "$webdir/$name/.env"
+    sed -i .bak 's,^\(DB_HOST=\).*,\1'localhost',' "$webdir/$name/.env"
+    sed -i .bak 's,^\(DB_DATABASE=\).*,\1'snipeit',' "$webdir/$name/.env"
+    sed -i .bak 's,^\(DB_USERNAME=\).*,\1'snipeit',' "$webdir/$name/.env"
+    sed -i .bak 's,^\(DB_PASSWORD=\).*,\1'$mysqluserpw',' "$webdir/$name/.env"
+    sed -i .bak 's,^\(APP_URL=\).*,\1'http://$fqdn',' "$webdir/$name/.env"
 
     echo "* Installing and running composer."
     cd "$webdir/$name/"
@@ -155,6 +153,19 @@ openfirewalld () {
     fi
 }
 
+echo "
+       _____       _                  __________
+      / ___/____  (_)___  ___        /  _/_  __/
+      \__ \/ __ \/ / __ \/ _ \______ / /  / /
+     ___/ / / / / / /_/ /  __/_____// /  / /
+    /____/_/ /_/_/ .___/\___/     /___/ /_/
+                /_/
+
+"
+echo "  Welcome to Snipe-IT Inventory Installer for CentOS, Fedora, Debian, Ubuntu and FreeBSD!"
+echo ""
+
+#Figure out our distro.
 if [[ -f /etc/lsb-release || -f /etc/debian_version ]]; then
     distro="$(lsb_release -s -i)"
     version="$(lsb_release -s -r)"
@@ -169,29 +180,20 @@ elif [ -f /etc/os-release ]; then
 elif [ -f /etc/centos-release ]; then
     distro="Centos"
     version="6"
+elif [ -f /bin/freebsd-version ]; then
+    distro="$(uname -s)"
+    version="$(uname -r)"
 else
     distro="unsupported"
 fi
 
-echo "
-       _____       _                  __________
-      / ___/____  (_)___  ___        /  _/_  __/
-      \__ \/ __ \/ / __ \/ _ \______ / /  / /
-     ___/ / / / / / /_/ /  __/_____// /  / /
-    /____/_/ /_/_/ .___/\___/     /___/ /_/
-                /_/
-"
-
-echo ""
-echo "  Welcome to Snipe-IT Inventory Installer for CentOS, Fedora, Debian and Ubuntu!"
-echo ""
 shopt -s nocasematch
 case $distro in
-    *Ubuntu*)
+    *ubuntu*)
         echo "  The installer has detected $distro version $version codename $codename."
         distro=ubuntu
         ;;
-    *Debian*)
+    *debian*)
         echo "  The installer has detected $distro version $version codename $codename."
         distro=debian
         ;;
@@ -203,17 +205,30 @@ case $distro in
         echo "  The installer has detected $distro version $version."
         distro=fedora
         ;;
+    *freebsd*)
+        echo "  The installer has detected $distro version $version."
+        distro=freebsd
+        ;;
     *)
         echo "  The installer was unable to determine your OS. Exiting for safety."
         exit
         ;;
 esac
+
+if [[ $distro == "freebsd" ]]
+then
+    hostname="$(hostname -s)"
+    fqdn="$(hostname -f)"
+else
+    hostname="$(hostname)"
+    fqdn="$(hostname --fqdn)"
+fi
 shopt -u nocasematch
 
 echo -n "  Q. What is the FQDN of your server? ($fqdn): "
-read -r fqdn
-if [ -z "$fqdn" ]; then
-    fqdn="$(hostname --fqdn)"
+read -r fqdninput
+if [ -n "$fqdninput" ]; then
+    fqdn="$fqdninput"
 fi
 echo "     Setting to $fqdn"
 echo ""
@@ -622,6 +637,76 @@ case $distro in
         echo "* Setting Apache httpd to start on boot and starting service."
         log "systemctl enable httpd.service"
         log "systemctl restart httpd.service"
+    ;;
+    freebsd)
+    if [[ "$version" =~ ^11 ]]; then
+        #####################################  Install for FreeBSD 11  ##############################################
+        webdir=/usr/local/www/apache24/data
+        ownergroup=www:www
+        tzone=$(cat /var/db/zoneinfo)
+
+        echo "* Installing Apache httpd, PHP, MariaDB and other requirements."
+        log "pkg install -y git unzip apache24 mariadb101-server mariadb101-client php71 mod_php71 php71-mysqli php71-bcmath php71-gd php71-mbstring php71-mcrypt php71-ldap php71-json php71-simplexml php71-phar php71-filter php71-hash php71-openssl php71-zlib php71-fileinfo php71-tokenizer php71-curl php71-pdo php71-xml php71-ctype php71-session php71-pdo_mysql"
+        cp /usr/local/etc/php.ini-production /usr/local/etc/php.ini
+
+        #run apache on startup
+        sysrc apache24_enable="yes"
+        sysrc mysql_enable="yes"
+        log "service apache24 start"
+
+        #Enable mod_rewrite
+        sed -i .bak "s;#LoadModule rewrite_module libexec/apache24/mod_rewrite.so;LoadModule rewrite_module libexec/apache24/mod_rewrite.so;" /usr/local/etc/apache24/httpd.conf
+
+        #Enable php in apache
+        phpconfigfile=/usr/local/etc/apache24/Includes/php.conf
+        {
+            echo "<IfModule dir_module>"
+            echo "  DirectoryIndex index.php index.html"
+            echo "  <FilesMatch \"\.php$\">"
+            echo "      SetHandler application/x-httpd-php"
+            echo "  </FilesMatch>"
+            echo "  <FilesMatch \"\.phps$\">"
+            echo "      SetHandler application/x-httpd-php-source"
+            echo "  </FilesMatch>"
+            echo "</IfModule>"
+        } >> "$phpconfigfile"
+
+        echo "* Creating the new virtual host in Apache."
+        apachefile=/usr/local/etc/apache24/Includes/$name.conf
+        {
+            echo "<VirtualHost *:80>"
+            echo "  <Directory $webdir/$name/public>"
+            echo "      Allow From All"
+            echo "      AllowOverride All"
+            echo "      Options +Indexes"
+            echo "  </Directory>"
+            echo ""
+            echo "  DocumentRoot $webdir/$name/public"
+            echo "  ServerName $fqdn"
+            echo "</VirtualHost>"
+        } >> "$apachefile"
+
+        #echo "* Setting up hosts file."
+        #echo >> $hosts "127.0.0.1 $hostname $fqdn"
+
+        echo "* Starting MariaDB."
+        log "service mysql-server start"
+
+        echo "* Securing MariaDB."
+        /usr/local/bin/mysql_secure_installation
+
+        echo "* Creating MariaDB Database/User."
+        echo "* Please Input your MariaDB root password:"
+        mysql -u root -p --execute="CREATE DATABASE snipeit;GRANT ALL PRIVILEGES ON snipeit.* TO snipeit@localhost IDENTIFIED BY '$mysqluserpw';"
+
+        installsnipeit
+
+        echo "* Restarting Apache httpd."
+        log "service apache24 restart"
+    else
+        echo "Unsupported FreeBSD version. Version found: $version"
+        exit 1
+    fi
 esac
 
 setupmail=default
