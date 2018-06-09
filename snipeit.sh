@@ -11,10 +11,6 @@
 #           Snipe-It Install Script                  #
 #          Script created by Mike Tucker             #
 #            mtucker6784@gmail.com                   #
-# This script is just to help streamline the         #
-# install process for Debian and CentOS              #
-# based distributions. I assume you will be          #
-# installing as a subdomain on a fresh OS install.   #
 #                                                    #
 # Feel free to modify, but please give               #
 # credit where it's due. Thanks!                     #
@@ -44,7 +40,7 @@ done
 
 print_usage () {
   grep '^#/' <"$0" | cut -c 4-
-  exit ${1:-1}
+  exit 1
 }
 
 if [ -n "$show_help" ]; then
@@ -71,6 +67,7 @@ fi
 clear
 
 name="snipeit"
+webdir=/var/www
 hostname="$(hostname)"
 fqdn="$(hostname --fqdn)"
 
@@ -148,6 +145,31 @@ create_virtualhost () {
   } >> "$apachefile"
 }
 
+run_as () {
+  if ! hash sudo 2>/dev/null; then
+      su -c "$@" "${ownergroup%:*}"
+  else
+      sudo -u "${ownergroup%:*}" "$@"
+  fi
+}
+
+install_composer () {
+  # https://getcomposer.org/doc/faqs/how-to-install-composer-programmatically.md
+  EXPECTED_SIGNATURE="$(wget -q -O - https://composer.github.io/installer.sig)"
+  php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+  ACTUAL_SIGNATURE="$(php -r "echo hash_file('SHA384', 'composer-setup.php');")"
+
+  if [ "$EXPECTED_SIGNATURE" != "$ACTUAL_SIGNATURE" ]
+  then
+      >&2 echo 'ERROR: Invalid composer installer signature'
+      rm composer-setup.php
+      exit 1
+  fi
+
+  php composer-setup.php --install-dir "$webdir/$name/"
+  rm composer-setup.php
+}
+
 install_snipeit () {
   echo "* Creating MariaDB Database/User."
   echo "* Please Input your MariaDB root password:"
@@ -168,10 +190,8 @@ install_snipeit () {
   sed -i "s|^\\(DB_PASSWORD=\\).*|\\1$mysqluserpw|" "$webdir/$name/.env"
   sed -i "s|^\\(APP_URL=\\).*|\\1http://$fqdn|" "$webdir/$name/.env"
 
-  echo "* Installing and running composer."
-  cd "$webdir/$name/"
-  curl -sS https://getcomposer.org/installer | php
-  php composer.phar install --no-dev --prefer-source
+  echo "* Installing composer."
+  install_composer
 
   echo "* Setting permissions."
   for chmod_dir in "$webdir/$name/storage" "$webdir/$name/storage/private_uploads" "$webdir/$name/public/uploads"; do
@@ -180,11 +200,14 @@ install_snipeit () {
 
   chown -R "$ownergroup" "$webdir/$name"
 
+  echo "* Running composer."  
+  run_as COMPOSER_CACHE_DIR=/dev/null php "$webdir/$name"/composer.phar install --no-dev --prefer-source --working-dir "$webdir/$name/"
+
   echo "* Generating the application key."
-  log "php artisan key:generate --force"
+  log "php $webdir/$name/artisan key:generate --force"
 
   echo "* Artisan Migrate."
-  log "php artisan migrate --force"
+  log "php $webdir/$name/artisan migrate --force"
 
   echo "* Creating scheduler cron."
   (crontab -l ; echo "* * * * * /usr/bin/php $webdir/$name/artisan schedule:run >> /dev/null 2>&1") | crontab -
@@ -264,7 +287,7 @@ case $distro in
     ;;
   *)
     echo "  The installer was unable to determine your OS. Exiting for safety."
-    exit
+    exit 1
     ;;
 esac
 shopt -u nocasematch
@@ -299,13 +322,10 @@ case $setpw in
 esac
 done
 
-#TODO: Lets not install snipeit application under root
-
 case $distro in
   debian)
   if [[ "$version" =~ ^9 ]]; then
     # Install for Debian 9.x
-    webdir=/var/www
     ownergroup=www-data:www-data
     tzone=$(cat /etc/timezone)
     apachefile=/etc/apache2/sites-available/$name.conf
@@ -316,8 +336,7 @@ case $distro in
     echo "deb https://packages.sury.org/php/ $codename main" > /etc/apt/sources.list.d/php.list
 
     echo -n "* Updating installed packages."
-    log "apt-get update"
-    log "apt-get -y upgrade" & pid=$!
+    log "apt-get update && apt-get -y upgrade" & pid=$!
     progress
 
     echo "* Installing Apache httpd, PHP, MariaDB and other requirements."
@@ -340,7 +359,6 @@ case $distro in
     log "service apache2 restart"
   elif [[ "$version" =~ ^8 ]]; then
     # Install for Debian 8.x
-    webdir=/var/www
     ownergroup=www-data:www-data
     tzone=$(cat /etc/timezone)
     apachefile=/etc/apache2/sites-available/$name.conf
@@ -353,8 +371,7 @@ case $distro in
     echo "deb https://packages.sury.org/php/ $codename main" > /etc/apt/sources.list.d/php.list
 
     echo -n "* Updating installed packages."
-    log "apt-get update"
-    log "apt-get -y upgrade" & pid=$!
+    log "apt-get update && apt-get -y upgrade" & pid=$!
     progress
 
     echo "* Installing Apache httpd, PHP, MariaDB and other requirements."
@@ -383,7 +400,6 @@ case $distro in
   ubuntu)
   if [ "$version" == "18.04" ]; then
     # Install for Ubuntu 18.04
-    webdir=/var/www
     ownergroup=www-data:www-data
     tzone=$(cat /etc/timezone)
     apachefile=/etc/apache2/sites-available/$name.conf
@@ -417,7 +433,6 @@ case $distro in
     log "systemctl restart apache2"
   elif [ "$version" == "16.04" ]; then
     # Install for Ubuntu 16.04
-    webdir=/var/www
     ownergroup=www-data:www-data
     tzone=$(cat /etc/timezone)
     apachefile=/etc/apache2/sites-available/$name.conf
@@ -457,7 +472,6 @@ case $distro in
     log "service apache2 restart"
   elif [ "$version" == "14.04" ]; then
     # Install for Ubuntu 14.04
-    webdir=/var/www
     ownergroup=www-data:www-data
     tzone=$(cat /etc/timezone)
     apachefile=/etc/apache2/sites-available/$name.conf
@@ -469,8 +483,7 @@ case $distro in
     log "add-apt-repository ppa:ondrej/php -y"
 
     echo -n "* Updating installed packages."
-    log "apt-get update"
-    log "DEBIAN_FRONTEND=noninteractive apt-get -y upgrade" & pid=$!
+    log "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -y upgrade" & pid=$!
     progress
 
     echo "* Installing Apache httpd, PHP, MariaDB and other requirements."
@@ -504,7 +517,6 @@ case $distro in
   centos)
   if [[ "$version" =~ ^6 ]]; then
     # Install for CentOS/Redhat 6.x
-    webdir=/var/www/html
     ownergroup=apache:apache
     tzone=$(grep ZONE /etc/sysconfig/clock | tr -d '"' | sed 's/ZONE=//g');
     apachefile=/etc/httpd/conf.d/$name.conf
@@ -555,7 +567,6 @@ case $distro in
     log "/sbin/service httpd start"
   elif [[ "$version" =~ ^7 ]]; then
     # Install for CentOS/Redhat 7
-    webdir=/var/www/html
     ownergroup=apache:apache
     tzone=$(timedatectl | gawk -F'[: ]' ' $9 ~ /zone/ {print $11}');
     apachefile=/etc/httpd/conf.d/$name.conf
@@ -598,7 +609,6 @@ case $distro in
   fedora)
   if [ "$version" -ge 26 ]; then
     # Install for Fedora 26+
-    webdir=/var/www/html
     ownergroup=apache:apache
     tzone=$(timedatectl | gawk -F'[: ]' ' $9 ~ /zone/ {print $11}');
     apachefile=/etc/httpd/conf.d/$name.conf
