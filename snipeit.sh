@@ -201,7 +201,7 @@ install_snipeit () {
   chown -R "$ownergroup" "$webdir/$name"
 
   echo "* Running composer."  
-  run_as COMPOSER_CACHE_DIR=/dev/null php "$webdir/$name"/composer.phar install --no-dev --prefer-source --working-dir "$webdir/$name/"
+  run_as COMPOSER_HOME="$webdir/$name" php "$webdir/$name"/composer.phar install --no-dev --prefer-source --working-dir "$webdir/$name/"
 
   echo "* Generating the application key."
   log "php $webdir/$name/artisan key:generate --force"
