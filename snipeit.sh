@@ -67,7 +67,8 @@ fi
 clear
 
 name="snipeit"
-webdir=/var/www
+user="snipeitapp"
+webdir="/var/www"
 hostname="$(hostname)"
 fqdn="$(hostname --fqdn)"
 
@@ -145,11 +146,18 @@ create_virtualhost () {
   } >> "$apachefile"
 }
 
+create_user () {
+  echo "* Creating Snipe-IT user."
+  #useradd "$user" -g "$apache_group"
+  useradd "$user"
+  usermod -a -G "$apache_group" "$user"
+}
+
 run_as () {
   if ! hash sudo 2>/dev/null; then
-      su -c "$@" "${ownergroup%:*}"
+      su -c "$@" $user
   else
-      sudo -u "${ownergroup%:*}" "$@"
+      sudo -u $user "$@"
   fi
 }
 
@@ -198,10 +206,10 @@ install_snipeit () {
     chmod -R 755 "$chmod_dir"
   done
 
-  chown -R "$ownergroup" "$webdir/$name"
+  chown -R "$user":"$apache_group" "$webdir/$name"
 
   echo "* Running composer."  
-  run_as COMPOSER_HOME="$webdir/$name" php "$webdir/$name"/composer.phar install --no-dev --prefer-source --working-dir "$webdir/$name/"
+  run_as php "$webdir/$name"/composer.phar install --no-dev --prefer-source --working-dir "$webdir/$name/"
 
   echo "* Generating the application key."
   log "php $webdir/$name/artisan key:generate --force"
@@ -326,7 +334,7 @@ case $distro in
   debian)
   if [[ "$version" =~ ^9 ]]; then
     # Install for Debian 9.x
-    ownergroup=www-data:www-data
+    apache_group=www-data
     tzone=$(cat /etc/timezone)
     apachefile=/etc/apache2/sites-available/$name.conf
 
@@ -359,7 +367,7 @@ case $distro in
     log "service apache2 restart"
   elif [[ "$version" =~ ^8 ]]; then
     # Install for Debian 8.x
-    ownergroup=www-data:www-data
+    apache_group=www-data
     tzone=$(cat /etc/timezone)
     apachefile=/etc/apache2/sites-available/$name.conf
 
@@ -400,7 +408,7 @@ case $distro in
   ubuntu)
   if [ "$version" == "18.04" ]; then
     # Install for Ubuntu 18.04
-    ownergroup=www-data:www-data
+    apache_group=www-data
     tzone=$(cat /etc/timezone)
     apachefile=/etc/apache2/sites-available/$name.conf
 
@@ -433,7 +441,7 @@ case $distro in
     log "systemctl restart apache2"
   elif [ "$version" == "16.04" ]; then
     # Install for Ubuntu 16.04
-    ownergroup=www-data:www-data
+    apache_group=www-data
     tzone=$(cat /etc/timezone)
     apachefile=/etc/apache2/sites-available/$name.conf
 
@@ -472,7 +480,7 @@ case $distro in
     log "service apache2 restart"
   elif [ "$version" == "14.04" ]; then
     # Install for Ubuntu 14.04
-    ownergroup=www-data:www-data
+    apache_group=www-data
     tzone=$(cat /etc/timezone)
     apachefile=/etc/apache2/sites-available/$name.conf
 
@@ -517,9 +525,11 @@ case $distro in
   centos)
   if [[ "$version" =~ ^6 ]]; then
     # Install for CentOS/Redhat 6.x
-    ownergroup=apache:apache
+    apache_group=apache
     tzone=$(grep ZONE /etc/sysconfig/clock | tr -d '"' | sed 's/ZONE=//g');
     apachefile=/etc/httpd/conf.d/$name.conf
+
+    create_user
 
     echo "* Adding IUS, epel-release and MariaDB repositories."
     mariadbRepo=/etc/yum.repos.d/MariaDB.repo
@@ -567,7 +577,7 @@ case $distro in
     log "/sbin/service httpd start"
   elif [[ "$version" =~ ^7 ]]; then
     # Install for CentOS/Redhat 7
-    ownergroup=apache:apache
+    apache_group=apache
     tzone=$(timedatectl | gawk -F'[: ]' ' $9 ~ /zone/ {print $11}');
     apachefile=/etc/httpd/conf.d/$name.conf
 
@@ -609,7 +619,7 @@ case $distro in
   fedora)
   if [ "$version" -ge 26 ]; then
     # Install for Fedora 26+
-    ownergroup=apache:apache
+    apache_group=apache
     tzone=$(timedatectl | gawk -F'[: ]' ' $9 ~ /zone/ {print $11}');
     apachefile=/etc/httpd/conf.d/$name.conf
 
