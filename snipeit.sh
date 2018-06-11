@@ -146,13 +146,6 @@ create_virtualhost () {
   } >> "$apachefile"
 }
 
-create_user () {
-  echo "* Creating Snipe-IT user."
-  #useradd "$user" -g "$apache_group"
-  useradd "$user"
-  usermod -a -G "$apache_group" "$user"
-}
-
 run_as () {
   if ! hash sudo 2>/dev/null; then
       su -c "$@" $user
@@ -179,6 +172,10 @@ install_composer () {
 }
 
 install_snipeit () {
+  echo "* Creating Snipe-IT user."
+  useradd "$user"
+  usermod -a -G "$apache_group" "$user"
+
   echo "* Creating MariaDB Database/User."
   echo "* Please Input your MariaDB root password:"
   mysql -u root -p --execute="CREATE DATABASE snipeit;GRANT ALL PRIVILEGES ON snipeit.* TO snipeit@localhost IDENTIFIED BY '$mysqluserpw';"
@@ -528,8 +525,6 @@ case $distro in
     apache_group=apache
     tzone=$(grep ZONE /etc/sysconfig/clock | tr -d '"' | sed 's/ZONE=//g');
     apachefile=/etc/httpd/conf.d/$name.conf
-
-    create_user
 
     echo "* Adding IUS, epel-release and MariaDB repositories."
     mariadbRepo=/etc/yum.repos.d/MariaDB.repo
