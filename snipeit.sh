@@ -150,7 +150,7 @@ run_as () {
   if ! hash sudo 2>/dev/null; then
       su -c "$@" $user
   else
-      sudo -u $user "$@"
+      sudo -i -u $user "$@"
   fi
 }
 
