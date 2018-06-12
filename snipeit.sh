@@ -158,7 +158,7 @@ install_composer () {
   # https://getcomposer.org/doc/faqs/how-to-install-composer-programmatically.md
   EXPECTED_SIGNATURE="$(wget -q -O - https://composer.github.io/installer.sig)"
   run_as php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
-  ACTUAL_SIGNATURE="$(php -r "echo hash_file('SHA384', 'composer-setup.php');")"
+  run_as ACTUAL_SIGNATURE="$(run_as php -r "echo hash_file('SHA384', 'composer-setup.php');")"
 
   if [ "$EXPECTED_SIGNATURE" != "$ACTUAL_SIGNATURE" ]
   then
@@ -206,7 +206,7 @@ install_snipeit () {
   chown -R "$user":"$apache_group" "$webdir/$name"
 
   echo "* Running composer."  
-  run_as php "$webdir/$name"/composer.phar install --no-dev --prefer-source --working-dir "$webdir/$name/"
+  run_as php composer.phar install --no-dev --prefer-source --working-dir "$webdir/$name/"
 
   echo "* Generating the application key."
   log "php $webdir/$name/artisan key:generate --force"
